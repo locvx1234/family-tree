@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Production build and test output
+dist/
+coverage/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime SQLite database and generated JWT secret
+server/data/*
+!server/data/.gitkeep
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite temporary files
+vite.config.js.timestamp-*
+
+# Editors, OS and local agent state
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.codex/
+*.swp
+*~

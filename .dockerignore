@@ -1,0 +1,16 @@
+node_modules
+dist
+server/data
+.git
+.gitignore
+.DS_Store
+.claude
+.codex
+npm-debug.log*
+.env
+.env.*
+!.env.example
+Dockerfile*
+compose*.yaml
+compose*.yml
+README.md

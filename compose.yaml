@@ -1,0 +1,23 @@
+services:
+  family-tree:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: family-tree:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${APP_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATA_DIR: /app/server/data
+      # Optional. If omitted, the app generates a secret in the persistent volume.
+      JWT_SECRET: "${JWT_SECRET:-}"
+    volumes:
+      - family_tree_data:/app/server/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  family_tree_data:
