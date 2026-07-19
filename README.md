@@ -97,3 +97,50 @@ docker compose down
 
 Không dùng `docker compose down -v` nếu chưa sao lưu, vì tùy chọn `-v` sẽ xóa
 volume chứa toàn bộ database.
+
+### Bật HTTPS với Certbot / Let's Encrypt
+
+Trước tiên, trỏ bản ghi DNS `A`/`AAAA` của domain về máy chủ và mở cả cổng 80,
+443. HTTP-01 bắt buộc phải truy cập được domain qua cổng 80.
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+docker compose up -d --build family-tree nginx
+```
+
+Kiểm tra `http://YOUR_DOMAIN/nginx-health`, sau đó cấp chứng chỉ (thay domain và
+email bằng giá trị thật):
+
+```bash
+docker compose run --rm certbot certonly \
+  --webroot --webroot-path /var/www/certbot \
+  --email admin@YOUR_DOMAIN --agree-tos --no-eff-email \
+  -d YOUR_DOMAIN
+```
+
+Sau khi Certbot báo thành công, tạo cấu hình HTTPS từ mẫu:
+
+```bash
+sed 's/YOUR_DOMAIN/example.com/g' \
+  nginx/default-ssl.conf.example > nginx/default.conf
+docker compose restart nginx
+```
+
+Thay `example.com` bằng domain thật. Kiểm tra cấu hình và HTTPS:
+
+```bash
+docker compose exec nginx nginx -t
+curl -I https://example.com
+```
+
+Gia hạn thử và reload Nginx:
+
+```bash
+docker compose run --rm certbot renew --dry-run
+docker compose run --rm certbot renew --quiet
+docker compose exec nginx nginx -s reload
+```
+
+Có thể đặt hai lệnh gia hạn cuối (bỏ lệnh `--dry-run`) vào cron hằng ngày. Certbot chỉ
+gia hạn khi chứng chỉ gần hết hạn; reload Nginx sau đó để worker đọc chứng chỉ mới.
