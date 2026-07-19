@@ -69,11 +69,13 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Mở `http://IP_MAY_CHU:3001`. Có thể đổi cổng public bằng `APP_PORT` trong
-`.env`, ví dụ `APP_PORT=8080`. Nếu Ubuntu đang bật UFW, cho phép cổng tương ứng:
+Mở `http://IP_MAY_CHU`. Nginx lắng nghe cổng 80 và reverse proxy đến ứng dụng
+Express ở cổng 3001 trong Docker network; cổng ứng dụng không được public trực
+tiếp. Có thể đổi cổng public bằng `HTTP_PORT` trong `.env`, ví dụ
+`HTTP_PORT=8080`. Nếu Ubuntu đang bật UFW, cho phép cổng tương ứng:
 
 ```bash
-sudo ufw allow 3001/tcp
+sudo ufw allow 80/tcp
 ```
 
 SQLite và JWT secret được giữ trong named volume `family_tree_data`, nên không
@@ -88,7 +90,7 @@ docker compose cp family-tree:/tmp/family-tree-data.tar.gz ./family-tree-data.ta
 Xem log, cập nhật và dừng dịch vụ:
 
 ```bash
-docker compose logs -f family-tree
+docker compose logs -f nginx family-tree
 docker compose up -d --build
 docker compose down
 ```
