@@ -16,6 +16,10 @@ services:
       JWT_SECRET: "${JWT_SECRET:-}"
     volumes:
       - family_tree_data:/app/server/data
+    networks:
+      family_tree_network:
+        aliases:
+          - app
     security_opt:
       - no-new-privileges:true
 
@@ -30,6 +34,8 @@ services:
       - "${HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - family_tree_network
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -41,3 +47,7 @@ services:
 
 volumes:
   family_tree_data:
+
+networks:
+  family_tree_network:
+    driver: bridge
