@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import { sampleTreeNguyen, sampleTreeTran } from './sampleTrees.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,10 @@ db.exec(`
 `);
 // Migration: cột share_token cho các DB tạo trước khi có chức năng chia sẻ
 try { db.exec('ALTER TABLE trees ADD COLUMN share_token TEXT'); } catch {}
+// Migration: thông tin định danh Google cho các DB tạo trước khi có SSO.
+try { db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch {}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_unique ON users(google_sub) WHERE google_sub IS NOT NULL');
 
 const now = () => new Date().toISOString();
 
@@ -74,6 +79,7 @@ function seedSampleTrees(userId) {
 })();
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '25mb' }));
 
 // Lightweight endpoint used by Docker/hosting health checks.
@@ -93,6 +99,160 @@ function auth(req, res, next) {
 }
 
 const makeToken = (uid) => jwt.sign({ uid }, JWT_SECRET, { expiresIn: '30d' });
+
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const GOOGLE_REDIRECT_URI = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
+const googleEnabled = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+
+function requestOrigin(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol;
+  return `${protocol}://${req.get('host')}`;
+}
+
+function googleRedirectUri(req) {
+  return GOOGLE_REDIRECT_URI || `${requestOrigin(req)}/api/auth/google/callback`;
+}
+
+function parseCookies(req) {
+  return String(req.headers.cookie || '').split(';').reduce((cookies, item) => {
+    const separator = item.indexOf('=');
+    if (separator < 0) return cookies;
+    const key = item.slice(0, separator).trim();
+    const value = item.slice(separator + 1).trim();
+    try { cookies[key] = decodeURIComponent(value); } catch { cookies[key] = value; }
+    return cookies;
+  }, {});
+}
+
+function stateCookie(req, value, maxAge = 600) {
+  const secure = requestOrigin(req).startsWith('https://');
+  return [
+    `giapha_google_state=${encodeURIComponent(value)}`,
+    'Path=/api/auth/google',
+    `Max-Age=${maxAge}`,
+    'HttpOnly',
+    'SameSite=Lax',
+    ...(secure ? ['Secure'] : []),
+  ].join('; ');
+}
+
+function popupResult(res, payload, status = 200) {
+  const serialized = JSON.stringify(payload).replace(/</g, '\\u003c');
+  res.status(status)
+    .set('Content-Type', 'text/html; charset=utf-8')
+    .set('Cache-Control', 'no-store')
+    .set('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'")
+    .send(`<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Đăng nhập Google</title>
+<style>body{font:16px system-ui,sans-serif;text-align:center;padding:48px;color:#3b2b20;background:#f7f0e0}</style></head>
+<body><p>Đang hoàn tất đăng nhập…</p><script>
+const result=${serialized};
+if (window.opener) {
+  window.opener.postMessage(result, window.location.origin);
+  window.close();
+} else if (result.token) {
+  localStorage.setItem('giapha_token', result.token);
+  localStorage.setItem('giapha_user', result.username);
+  window.location.replace('/');
+} else {
+  document.body.innerHTML = '<p>' + (result.error || 'Không thể đăng nhập') + '</p><p><a href="/">Về trang chủ</a></p>';
+}
+</script></body></html>`);
+}
+
+function uniqueGoogleUsername(email, sub) {
+  const localPart = String(email || 'google').split('@')[0];
+  const clean = localPart.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 18) || 'google';
+  const suffix = String(sub).replace(/[^a-zA-Z0-9]/g, '').slice(-6) || crypto.randomBytes(3).toString('hex');
+  let candidate = `${clean}_${suffix}`.slice(0, 30);
+  let counter = 1;
+  while (db.prepare('SELECT 1 FROM users WHERE username = ?').get(candidate)) {
+    candidate = `${clean.slice(0, 24)}_${counter++}`.slice(0, 30);
+  }
+  return candidate;
+}
+
+app.get('/api/auth/google/status', (_req, res) => {
+  res.json({ enabled: googleEnabled });
+});
+
+app.get('/api/auth/google', (req, res) => {
+  if (!googleEnabled) return res.status(503).send('Đăng nhập Google chưa được cấu hình');
+  const state = crypto.randomBytes(24).toString('base64url');
+  const redirectUri = googleRedirectUri(req);
+  const client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirectUri);
+  const url = client.generateAuthUrl({
+    access_type: 'online',
+    scope: ['openid', 'email', 'profile'],
+    state,
+    prompt: 'select_account',
+  });
+  res.setHeader('Set-Cookie', stateCookie(req, state));
+  res.redirect(url);
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  res.setHeader('Set-Cookie', stateCookie(req, '', 0));
+  const expectedState = parseCookies(req).giapha_google_state;
+  const state = String(req.query.state || '');
+  const expectedBuffer = Buffer.from(expectedState || '');
+  const stateBuffer = Buffer.from(state);
+  if (!expectedState || !state || expectedBuffer.length !== stateBuffer.length
+    || !crypto.timingSafeEqual(expectedBuffer, stateBuffer)) {
+    return popupResult(res, { type: 'giapha:google-auth', error: 'Phiên đăng nhập Google không hợp lệ. Vui lòng thử lại.' }, 400);
+  }
+  if (req.query.error) {
+    return popupResult(res, { type: 'giapha:google-auth', error: 'Bạn đã hủy đăng nhập Google.' }, 400);
+  }
+  const code = String(req.query.code || '');
+  if (!code) {
+    return popupResult(res, { type: 'giapha:google-auth', error: 'Google không trả về mã đăng nhập hợp lệ.' }, 400);
+  }
+
+  try {
+    const redirectUri = googleRedirectUri(req);
+    const client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirectUri);
+    const { tokens } = await client.getToken(code);
+    if (!tokens.id_token) throw new Error('Missing Google ID token');
+    const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: GOOGLE_CLIENT_ID });
+    const profile = ticket.getPayload();
+    if (!profile?.sub || !profile.email || !profile.email_verified) {
+      return popupResult(res, {
+        type: 'giapha:google-auth',
+        error: 'Tài khoản Google cần có email đã được xác minh.',
+      }, 403);
+    }
+
+    let user = db.prepare('SELECT id, username FROM users WHERE google_sub = ?').get(profile.sub);
+    if (!user) {
+      const username = uniqueGoogleUsername(profile.email, profile.sub);
+      // Tài khoản Google không dùng mật khẩu cục bộ; giá trị ngẫu nhiên này giữ tương thích DB cũ.
+      const unusablePassword = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
+      const result = db.prepare(`
+        INSERT INTO users (username, password_hash, google_sub, email, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(username, unusablePassword, profile.sub, profile.email, now());
+      user = { id: Number(result.lastInsertRowid), username };
+      seedSampleTrees(user.id);
+    } else {
+      db.prepare('UPDATE users SET email = ? WHERE id = ?').run(profile.email, user.id);
+    }
+
+    return popupResult(res, {
+      type: 'giapha:google-auth',
+      token: makeToken(user.id),
+      username: user.username,
+    });
+  } catch (error) {
+    console.error('Google OAuth callback failed:', error);
+    return popupResult(res, {
+      type: 'giapha:google-auth',
+      error: 'Không thể xác minh tài khoản Google. Vui lòng thử lại.',
+    }, 502);
+  }
+});
 
 // Quyền truy cập một gia phả: 'owner' | 'editor' | null
 function treeAccess(treeId, userId) {
@@ -273,7 +433,18 @@ function newEmptyTree() {
   return {
     version: 1,
     persons: {
-      p1: { id: 'p1', name: 'Cụ tổ', gender: 'male', birth: '', death: '', note: '', avatar: null },
+      p1: {
+        id: 'p1',
+        name: 'Cụ tổ',
+        gender: 'male',
+        birth: '',
+        death: '',
+        isDeceased: false,
+        phone: '',
+        socialLinks: '',
+        note: '',
+        avatar: null,
+      },
     },
     unions: { u1: { id: 'u1', partners: ['p1'], children: [] } },
     rootId: 'u1',

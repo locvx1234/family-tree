@@ -14,6 +14,10 @@ services:
       DATA_DIR: /app/server/data
       # Optional. If omitted, the app generates a secret in the persistent volume.
       JWT_SECRET: "${JWT_SECRET:-}"
+      # Optional. Khi đủ 3 giá trị, nút "Tiếp tục với Google" tự động xuất hiện.
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      GOOGLE_REDIRECT_URI: "${GOOGLE_REDIRECT_URI:-}"
     volumes:
       - family_tree_data:/app/server/data
     networks:

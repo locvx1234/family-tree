@@ -7,7 +7,8 @@ import {
   updatePerson, addSpouse, addChild, addGenerationAbove,
   deletePerson, countDeleted, movePartner, moveChild,
 } from './treeOps.js';
-import { exportPNG, exportPDF, exportJSON, readAvatarFile } from './exporter.js';
+import { exportPNG, exportPDF, exportJSON } from './exporter.js';
+import AvatarCropModal, { prepareAvatarFile } from './AvatarCropModal.jsx';
 
 const MARGIN = { left: 120, top: 30, right: 40, bottom: 40 };
 
@@ -28,6 +29,7 @@ export default function Editor({ treeId, onBack, username, onLogout }) {
   const [shareToken, setShareToken] = useState(null);
   const [editors, setEditors] = useState([]);
   const [editorName, setEditorName] = useState('');
+  const [avatarCrop, setAvatarCrop] = useState(null);
 
   const canvasRef = useRef(null);
   const exportSvgRef = useRef(null);
@@ -206,8 +208,7 @@ export default function Editor({ treeId, onBack, username, onLogout }) {
     e.target.value = '';
     if (!file) return;
     try {
-      const dataUri = await readAvatarFile(file);
-      applyData(updatePerson(data, selected, { avatar: dataUri }));
+      setAvatarCrop(await prepareAvatarFile(file));
     } catch (err) { toast(err.message); }
   };
 
@@ -293,7 +294,12 @@ export default function Editor({ treeId, onBack, username, onLogout }) {
     try {
       const avatars = layout.cards
         .filter((c) => data.persons[c.pid]?.avatar)
-        .map((c) => ({ src: data.persons[c.pid].avatar, x: c.x, y: c.y }));
+        .map((c) => ({
+          src: data.persons[c.pid].avatar,
+          x: c.x,
+          y: c.y,
+          isDeceased: data.persons[c.pid].isDeceased ?? Boolean(data.persons[c.pid].death),
+        }));
       if (kind === 'png') await exportPNG(exportSvgRef.current, name, avatars);
       else await exportPDF(exportSvgRef.current, name, avatars);
       toast(kind === 'png' ? 'Đã xuất ảnh PNG' : 'Đã xuất file PDF');
@@ -408,6 +414,17 @@ export default function Editor({ treeId, onBack, username, onLogout }) {
                 <option value="other">Khác</option>
               </select>
             </div>
+            <label className="deceased-toggle">
+              <input
+                type="checkbox"
+                checked={person.isDeceased ?? Boolean(person.death)}
+                onChange={(e) => applyData(updatePerson(data, selected, { isDeceased: e.target.checked }))}
+              />
+              <span>
+                <b>Người này đã mất</b>
+                <small>Thẻ trên cây sẽ được thể hiện trang trọng, nhẹ nhàng hơn.</small>
+              </span>
+            </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="field">
                 <label>Năm sinh</label>
@@ -415,8 +432,33 @@ export default function Editor({ treeId, onBack, username, onLogout }) {
               </div>
               <div className="field">
                 <label>Năm mất</label>
-                <input value={person.death} placeholder="Để trống nếu còn sống" onChange={(e) => applyData(updatePerson(data, selected, { death: e.target.value }))} />
+                <input
+                  value={person.death}
+                  placeholder="Không bắt buộc"
+                  onChange={(e) => applyData(updatePerson(data, selected, {
+                    death: e.target.value,
+                    ...(e.target.value.trim() ? { isDeceased: true } : {}),
+                  }))}
+                />
               </div>
+            </div>
+            <div className="field">
+              <label>Số điện thoại (không bắt buộc)</label>
+              <input
+                type="tel"
+                value={person.phone || ''}
+                placeholder="VD: 0901 234 567"
+                onChange={(e) => applyData(updatePerson(data, selected, { phone: e.target.value }))}
+              />
+            </div>
+            <div className="field">
+              <label>Link mạng xã hội (không bắt buộc, mỗi link một dòng)</label>
+              <textarea
+                rows={3}
+                value={person.socialLinks || ''}
+                placeholder={'https://facebook.com/…\nhttps://zalo.me/…'}
+                onChange={(e) => applyData(updatePerson(data, selected, { socialLinks: e.target.value }))}
+              />
             </div>
             <div className="field">
               <label>Ghi chú (quê quán, nghề nghiệp, tiểu sử…)</label>
@@ -547,6 +589,18 @@ export default function Editor({ treeId, onBack, username, onLogout }) {
             </div>
           </div>
         </div>
+      )}
+
+      {avatarCrop && (
+        <AvatarCropModal
+          source={avatarCrop}
+          onCancel={() => setAvatarCrop(null)}
+          onSave={(avatar) => {
+            applyData(updatePerson(data, selected, { avatar }));
+            setAvatarCrop(null);
+            toast('Đã cắt và cập nhật ảnh đại diện');
+          }}
+        />
       )}
     </div>
   );

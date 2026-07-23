@@ -9,7 +9,19 @@ const findPartnerUnion = (t, pid) => Object.values(t.unions).find((u) => u.partn
 const findChildUnion = (t, pid) => Object.values(t.unions).find((u) => u.children.includes(pid)) || null;
 
 export function newPerson(overrides = {}) {
-  return { id: uid('p'), name: 'Chưa đặt tên', gender: 'male', birth: '', death: '', note: '', avatar: null, ...overrides };
+  return {
+    id: uid('p'),
+    name: 'Chưa đặt tên',
+    gender: 'male',
+    birth: '',
+    death: '',
+    isDeceased: false,
+    phone: '',
+    socialLinks: '',
+    note: '',
+    avatar: null,
+    ...overrides,
+  };
 }
 
 export function updatePerson(tree, pid, fields) {

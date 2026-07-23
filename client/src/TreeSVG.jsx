@@ -42,6 +42,7 @@ function wrapName(name, maxChars = 15) {
 
 export function PersonCard({ person, x, y, selected, onSelect }) {
   const genderColor = COLORS[person.gender] || COLORS.other;
+  const isDeceased = person.isDeceased ?? Boolean(person.death);
   const lines = wrapName(person.name);
   const years = [person.birth, person.death].filter(Boolean).join(' – ') || (person.birth === '' ? '' : person.birth);
   const clipId = `avatar-clip-${person.id}`;
@@ -57,7 +58,7 @@ export function PersonCard({ person, x, y, selected, onSelect }) {
           fill="none" stroke={COLORS.selected} strokeWidth={3.5} opacity={0.9} />
       )}
       <rect className="card-bg" width={CARD_W} height={CARD_H} rx={10}
-        fill={COLORS.card} stroke={COLORS.cardBorder} strokeWidth={1.6} />
+        fill={isDeceased ? '#f5f1e8' : COLORS.card} stroke={isDeceased ? '#7d7469' : COLORS.cardBorder} strokeWidth={1.6} />
       <rect x={4.5} y={4.5} width={CARD_W - 9} height={CARD_H - 9} rx={7}
         fill="none" stroke={COLORS.cardInner} strokeWidth={0.9} opacity={0.85} />
       {/* dải màu giới tính trên đỉnh */}
@@ -70,7 +71,7 @@ export function PersonCard({ person, x, y, selected, onSelect }) {
       <circle cx={CARD_W / 2} cy={52} r={35.5} fill="none" stroke={COLORS.cardInner} strokeWidth={2} />
       {person.avatar ? (
         <image href={person.avatar} x={CARD_W / 2 - 33} y={19} width={66} height={66}
-          clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice" />
+          clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice" opacity={isDeceased ? 0.76 : 1} />
       ) : (
         <>
           <circle cx={CARD_W / 2} cy={52} r={33} fill="#ece2cc" />
@@ -79,6 +80,15 @@ export function PersonCard({ person, x, y, selected, onSelect }) {
             {initialOf(person.name)}
           </text>
         </>
+      )}
+      {isDeceased && (
+        <g>
+          <rect x={91} y={8} width={50} height={17} rx={8.5} fill="#68615a" opacity={0.9} />
+          <text x={116} y={20} textAnchor="middle" fontSize={8.5} fill="#fffaf0"
+            fontFamily="Georgia, serif" letterSpacing={0.5}>
+            ĐÃ MẤT
+          </text>
+        </g>
       )}
 
       {/* tên */}

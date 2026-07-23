@@ -15,7 +15,7 @@ function loadImage(src) {
 }
 
 // Vẽ toàn bộ cây lên canvas: nền giấy, khung viền kép, tiêu đề, rồi ảnh SVG.
-// avatars: [{src, x, y}] — vẽ đè trực tiếp lên canvas vì ảnh <image> lồng trong SVG
+// avatars: [{src, x, y, isDeceased}] — vẽ đè trực tiếp lên canvas vì ảnh <image> lồng trong SVG
 // không được trình duyệt đảm bảo tải xong khi raster hóa SVG qua thẻ <img>.
 async function renderToCanvas(svgEl, treeName, scale = 2, avatars = []) {
   const vb = svgEl.viewBox.baseVal;
@@ -81,6 +81,7 @@ async function renderToCanvas(svgEl, treeName, scale = 2, avatars = []) {
       ctx.beginPath();
       ctx.arc(cx, cy, AVATAR.r, 0, Math.PI * 2);
       ctx.clip();
+      if (av.isDeceased) ctx.globalAlpha = 0.76;
       const s = Math.max((AVATAR.r * 2) / photo.width, (AVATAR.r * 2) / photo.height);
       ctx.drawImage(photo, cx - (photo.width * s) / 2, cy - (photo.height * s) / 2, photo.width * s, photo.height * s);
       ctx.restore();
@@ -145,30 +146,5 @@ export function readImportedJSON(file) {
     };
     reader.onerror = () => reject(new Error('Không đọc được file'));
     reader.readAsText(file);
-  });
-}
-
-// Resize ảnh avatar về tối đa 256px, trả về data URI JPEG
-export function readAvatarFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const max = 256;
-        const ratio = Math.min(1, max / Math.max(img.width, img.height));
-        const w = Math.round(img.width * ratio);
-        const h = Math.round(img.height * ratio);
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
-      };
-      img.onerror = () => reject(new Error('File không phải ảnh hợp lệ'));
-      img.src = reader.result;
-    };
-    reader.onerror = () => reject(new Error('Không đọc được file'));
-    reader.readAsDataURL(file);
   });
 }

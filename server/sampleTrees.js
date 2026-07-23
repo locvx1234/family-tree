@@ -4,7 +4,18 @@
 // Thứ tự trong children = con cả -> con út, trái -> phải.
 
 function person(id, name, gender, birth = '', death = '', note = '') {
-  return { id, name, gender, birth, death, note, avatar: null };
+  return {
+    id,
+    name,
+    gender,
+    birth,
+    death,
+    isDeceased: Boolean(death),
+    phone: '',
+    socialLinks: '',
+    note,
+    avatar: null,
+  };
 }
 
 export function sampleTreeNguyen() {

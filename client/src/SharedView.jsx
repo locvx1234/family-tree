@@ -6,6 +6,16 @@ import { exportPNG, exportPDF } from './exporter.js';
 
 const MARGIN = { left: 120, top: 30, right: 40, bottom: 40 };
 
+function safeSocialLinks(value) {
+  return String(value || '')
+    .split(/\s+/)
+    .map((link) => link.trim())
+    .filter((link) => {
+      if (!/^https?:\/\//i.test(link)) return false;
+      try { return Boolean(new URL(link).hostname); } catch { return false; }
+    });
+}
+
 // Trang xem gia phả công khai qua link chia sẻ — không cần đăng nhập, chỉ đọc.
 export default function SharedView({ token }) {
   const [info, setInfo] = useState(null);
@@ -87,7 +97,12 @@ export default function SharedView({ token }) {
     try {
       const avatars = layout.cards
         .filter((c) => info.data.persons[c.pid]?.avatar)
-        .map((c) => ({ src: info.data.persons[c.pid].avatar, x: c.x, y: c.y }));
+        .map((c) => ({
+          src: info.data.persons[c.pid].avatar,
+          x: c.x,
+          y: c.y,
+          isDeceased: info.data.persons[c.pid].isDeceased ?? Boolean(info.data.persons[c.pid].death),
+        }));
       if (kind === 'png') await exportPNG(exportSvgRef.current, info.name, avatars);
       else await exportPDF(exportSvgRef.current, info.name, avatars);
     } finally {
@@ -164,7 +179,10 @@ export default function SharedView({ token }) {
         {person && (
           <div className="side-panel" key={selected}>
             <h3>{person.name}</h3>
-            <span className="gen-tag">Đời thứ {(genMap[selected] ?? 0) + 1}</span>
+            <span className="gen-tag">
+              Đời thứ {(genMap[selected] ?? 0) + 1}
+              {(person.isDeceased ?? Boolean(person.death)) && <span className="deceased-label">Đã mất</span>}
+            </span>
             <div className="avatar-edit">
               {person.avatar ? (
                 <img className="avatar-preview" src={person.avatar} alt="" />
@@ -178,6 +196,22 @@ export default function SharedView({ token }) {
             {(person.birth || person.death) && (
               <div className="field"><label>Năm sinh – mất</label>
                 <div>{[person.birth || '?', person.death].filter(Boolean).join(' – ')}</div>
+              </div>
+            )}
+            {person.phone && (
+              <div className="field"><label>Số điện thoại</label>
+                <a className="profile-link" href={`tel:${person.phone.replace(/[^\d+]/g, '')}`}>{person.phone}</a>
+              </div>
+            )}
+            {safeSocialLinks(person.socialLinks).length > 0 && (
+              <div className="field"><label>Mạng xã hội</label>
+                <div className="profile-links">
+                  {safeSocialLinks(person.socialLinks).map((link) => (
+                    <a className="profile-link" href={link} target="_blank" rel="noreferrer" key={link}>
+                      {new URL(link).hostname.replace(/^www\./, '')}
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
             {person.note && (

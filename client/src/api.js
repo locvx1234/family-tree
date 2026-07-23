@@ -34,6 +34,7 @@ async function request(path, options = {}) {
 export const api = {
   register: (username, password) => request('/api/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
   login: (username, password) => request('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  googleStatus: () => request('/api/auth/google/status'),
   me: () => request('/api/me'),
   listTrees: () => request('/api/trees'),
   createTree: (name, data) => request('/api/trees', { method: 'POST', body: JSON.stringify({ name, data }) }),
